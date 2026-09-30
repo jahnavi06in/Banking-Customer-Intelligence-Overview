@@ -1,1322 +1,458 @@
-# ============================================================
-# BANKING CUSTOMER SEGMENTATION & BEHAVIOURAL ANALYTICS
-# MACHINE LEARNING + STREAMLIT DASHBOARD
-# ============================================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 from pathlib import Path
-
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
-
 import plotly.express as px
 import plotly.graph_objects as go
 
-
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE
 # ============================================================
-
 st.set_page_config(
-    page_title="Banking Customer Intelligence Dashboard",
-    page_icon="🏦",
+    page_title="Banking Customer Intelligence",
+    page_icon="◈",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
+BASE_DIR = Path(__file__).resolve().parent
+RAW_FILE = BASE_DIR / "Churn_Modelling.csv"
 
 # ============================================================
-# CUSTOM DASHBOARD STYLE
+# DESIGN SYSTEM
 # ============================================================
-
 st.markdown("""
 <style>
-
-.stApp {
-    background-color: #080914;
-    color: #ffffff;
+:root {
+    --bg:#070A12;
+    --panel:#0D1220;
+    --panel2:#111827;
+    --border:#202A3D;
+    --text:#F4F7FB;
+    --muted:#8792A8;
+    --accent:#6EA8FE;
+    --success:#42D392;
+    --warning:#F5C451;
+    --danger:#FF6B7A;
 }
-
-.block-container {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-    max-width: 100%;
+.stApp { background:var(--bg); color:var(--text); }
+.block-container { padding:1.4rem 2rem 2rem; max-width:1600px; }
+[data-testid="stSidebar"] { background:#090D17; border-right:1px solid var(--border); }
+[data-testid="stSidebar"] * { color:#DCE4F2; }
+h1,h2,h3 { letter-spacing:-.02em; }
+.hero {
+    padding:24px 26px; border:1px solid var(--border); border-radius:18px;
+    background:linear-gradient(135deg,#101829 0%,#0B101B 65%,#101726 100%);
+    margin-bottom:18px;
 }
-
-.dashboard-header {
-    background-color: #0d0f1c;
-    border: 1px solid #1d2132;
-    border-radius: 8px;
-    padding: 13px 18px;
-    margin-bottom: 10px;
+.eyebrow { color:var(--accent); font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+.hero-title { font-size:30px; font-weight:800; margin:5px 0 3px; }
+.hero-sub { color:var(--muted); font-size:13px; }
+.kpi {
+    background:linear-gradient(180deg,#101624,#0C111C); border:1px solid var(--border);
+    border-radius:15px; padding:16px 17px; min-height:112px;
 }
-
-.dashboard-title {
-    color: #ffffff;
-    font-size: 21px;
-    font-weight: 700;
+.kpi-label { color:var(--muted); font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.kpi-value { color:var(--text); font-size:25px; font-weight:800; margin-top:8px; }
+.kpi-note { color:#65728A; font-size:10px; margin-top:5px; }
+.section {
+    color:#E9EEF8; font-size:13px; font-weight:800; letter-spacing:.03em;
+    margin:22px 0 9px; padding-bottom:8px; border-bottom:1px solid var(--border);
 }
-
-.dashboard-subtitle {
-    color: #85899e;
-    font-size: 11px;
-    margin-top: 3px;
+.insight {
+    background:#0D1421; border:1px solid var(--border); border-radius:14px;
+    padding:15px 16px; min-height:112px;
 }
-
-.metric-card {
-    background-color: #0d0f1c;
-    border: 1px solid #1d2132;
-    border-radius: 7px;
-    padding: 13px;
-    min-height: 90px;
+.insight-title { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:800; }
+.insight-value { font-size:19px; font-weight:800; margin-top:7px; }
+.insight-copy { font-size:11px; color:#78859B; margin-top:5px; line-height:1.45; }
+.badge {
+    display:inline-block; padding:4px 8px; border-radius:999px;
+    font-size:9px; font-weight:800; letter-spacing:.05em;
+    background:#18243A; color:#9FC0FF; border:1px solid #263A5C;
 }
-
-.metric-title {
-    color: #85899e;
-    font-size: 10px;
-    font-weight: 600;
-}
-
-.metric-value {
-    color: #ffffff;
-    font-size: 23px;
-    font-weight: 700;
-    margin-top: 7px;
-}
-
-.metric-small {
-    color: #27d17f;
-    font-size: 10px;
-    margin-top: 4px;
-}
-
-.section-title {
-    background-color: #0d0f1c;
-    border: 1px solid #1d2132;
-    border-bottom: none;
-    border-radius: 7px 7px 0px 0px;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 8px 10px;
-}
-
-[data-testid="stDataFrame"] {
-    border: 1px solid #1d2132;
-}
-
-#MainMenu {
-    visibility: hidden;
-}
-
-footer {
-    visibility: hidden;
-}
-
-header {
-    visibility: hidden;
-}
-
+div[data-testid="stMetric"] { background:transparent; }
+.stButton button { border-radius:10px; }
+footer { visibility:hidden; }
+#MainMenu { visibility:hidden; }
+header { visibility:hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-
 # ============================================================
-# FILE PATH
+# DATA
 # ============================================================
-
-BASE_DIR = Path(__file__).resolve().parent
-
-RAW_FILE = BASE_DIR / "Churn_Modelling.csv"
-
-RESULT_FILE = (
-    BASE_DIR /
-    "Banking_Customer_Segmentation_Result.csv"
-)
-
-PROFILE_FILE = (
-    BASE_DIR /
-    "Customer_Segment_Profile.csv"
-)
-
-
-# ============================================================
-# SAFE CSV READER
-# ============================================================
-
-def read_csv_safe(file_path):
-
-    encodings = [
-        "utf-8-sig",
-        "utf-8",
-        "latin1",
-        "cp1252"
-    ]
-
-    last_error = None
-
-    for encoding in encodings:
-
+@st.cache_data
+def load_data():
+    encodings = ["utf-8-sig","utf-8","latin1","cp1252"]
+    last = None
+    for enc in encodings:
         try:
+            d = pd.read_csv(RAW_FILE, encoding=enc)
+            if not d.empty:
+                return d
+        except Exception as e:
+            last = e
+    raise last or ValueError("Unable to read dataset.")
 
-            df = pd.read_csv(
-                file_path,
-                encoding=encoding
-            )
+raw = load_data()
 
-            if df.empty:
-                continue
-
-            return df
-
-        except Exception as error:
-
-            last_error = error
-
-    if last_error is not None:
-        raise last_error
-
-    raise ValueError(
-        f"The file {file_path.name} is empty."
-    )
-
-
-# ============================================================
-# LOAD ORIGINAL DATASET
-# ============================================================
-
-if not RAW_FILE.exists():
-
-    st.error(
-        "Churn_Modelling.csv was not found."
-    )
-
-    st.write(
-        "Expected location:"
-    )
-
-    st.code(
-        str(RAW_FILE)
-    )
-
-    st.stop()
-
-
-try:
-
-    raw = read_csv_safe(RAW_FILE)
-
-except Exception as error:
-
-    st.error(
-        "Unable to read Churn_Modelling.csv"
-    )
-
-    st.code(
-        str(error)
-    )
-
-    st.stop()
-
-
-# ============================================================
-# CHECK DATASET
-# ============================================================
-
-required_columns = [
-    "CreditScore",
-    "Age",
-    "Tenure",
-    "Balance",
-    "NumOfProducts",
-    "HasCrCard",
-    "IsActiveMember",
-    "EstimatedSalary",
-    "Exited"
+required = [
+    "CreditScore","Age","Tenure","Balance","NumOfProducts",
+    "HasCrCard","IsActiveMember","EstimatedSalary","Exited"
 ]
-
-missing_columns = [
-    column
-    for column in required_columns
-    if column not in raw.columns
-]
-
-if missing_columns:
-
-    st.error(
-        "Required columns are missing from Churn_Modelling.csv"
-    )
-
-    st.write(
-        missing_columns
-    )
-
-    st.write(
-        "Available columns:"
-    )
-
-    st.write(
-        list(raw.columns)
-    )
-
+missing = [c for c in required if c not in raw.columns]
+if missing:
+    st.error(f"Missing required columns: {missing}")
     st.stop()
-
-
-# ============================================================
-# COPY DATA
-# ============================================================
 
 data = raw.copy()
-
-
-# ============================================================
-# CONVERT NUMERIC COLUMNS
-# ============================================================
-
-numeric_columns = [
-    "CreditScore",
-    "Age",
-    "Tenure",
-    "Balance",
-    "NumOfProducts",
-    "HasCrCard",
-    "IsActiveMember",
-    "EstimatedSalary",
-    "Exited"
-]
-
-for column in numeric_columns:
-
-    data[column] = pd.to_numeric(
-        data[column],
-        errors="coerce"
-    )
-
+for c in required:
+    data[c] = pd.to_numeric(data[c], errors="coerce")
+    data[c] = data[c].fillna(data[c].median())
 
 # ============================================================
-# HANDLE MISSING VALUES
+# MODEL
 # ============================================================
-
-for column in numeric_columns:
-
-    if data[column].isna().any():
-
-        data[column] = data[column].fillna(
-            data[column].median()
-        )
-
-
-# ============================================================
-# FEATURES FOR CLUSTERING
-# ============================================================
-
 features = [
-    "CreditScore",
-    "Age",
-    "Tenure",
-    "Balance",
-    "NumOfProducts",
-    "HasCrCard",
-    "IsActiveMember",
-    "EstimatedSalary"
+    "CreditScore","Age","Tenure","Balance","NumOfProducts",
+    "HasCrCard","IsActiveMember","EstimatedSalary"
 ]
-
-
-X = data[features].copy()
-
-
-# ============================================================
-# STANDARDIZATION
-# ============================================================
-
 scaler = StandardScaler()
+X_scaled = scaler.fit_transform(data[features])
 
-X_scaled = scaler.fit_transform(X)
+@st.cache_data
+def build_model(X):
+    scores = {}
+    for k in range(2,9):
+        model = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = model.fit_predict(X)
+        scores[k] = silhouette_score(X, labels)
+    best_k = max(scores, key=scores.get)
+    final_model = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+    labels = final_model.fit_predict(X)
+    return scores, best_k, labels, final_model
 
-
-# ============================================================
-# SILHOUETTE ANALYSIS
-# ============================================================
-
-silhouette_scores = {}
-
-for k in range(2, 9):
-
-    model = KMeans(
-        n_clusters=k,
-        random_state=42,
-        n_init=10
-    )
-
-    labels = model.fit_predict(X_scaled)
-
-    score = silhouette_score(
-        X_scaled,
-        labels
-    )
-
-    silhouette_scores[k] = score
-
+silhouette_scores, best_k, labels, model = build_model(X_scaled)
+data["Cluster"] = labels
 
 # ============================================================
-# SELECT BEST K
+# BUSINESS PERSONAS
+# Deterministic naming based on observed cluster behaviour.
+# Technical cluster IDs stay hidden from the user.
 # ============================================================
+profile = data.groupby("Cluster").agg(
+    Customers=("Cluster","size"),
+    Avg_Age=("Age","mean"),
+    Avg_CreditScore=("CreditScore","mean"),
+    Avg_Balance=("Balance","mean"),
+    Avg_Salary=("EstimatedSalary","mean"),
+    Avg_Products=("NumOfProducts","mean"),
+    Active_Rate=("IsActiveMember","mean"),
+    Churn_Rate=("Exited","mean")
+).reset_index()
 
-best_k = max(
-    silhouette_scores,
-    key=silhouette_scores.get
-)
+profile["Active_Rate"] *= 100
+profile["Churn_Rate"] *= 100
 
+# Assign names using behavioural signals.
+# This avoids displaying "Segment 1/2/3..." in the business UI.
+def persona_name(row, med_balance, med_churn):
+    if row.Avg_Products >= 1.9 and row.Active_Rate >= 75:
+        return "Product Power Users"
+    if row.Avg_Products >= 1.9 and row.Active_Rate < 75:
+        return "Multi-Product Opportunity"
+    if row.Churn_Rate >= med_churn * 1.25 and row.Active_Rate < 75:
+        return "Retention Watchlist"
+    if row.Avg_Balance >= med_balance * 1.25 and row.Active_Rate >= 75:
+        return "High-Value Active"
+    if row.Churn_Rate >= med_churn * 1.15:
+        return "Re-Engagement Priority"
+    if row.Active_Rate >= 75 and row.Churn_Rate < med_churn:
+        return "Loyal Core"
+    if row.Active_Rate < 75 and row.Avg_Balance >= med_balance:
+        return "Dormant Value"
+    return "Growth Potential"
 
-# ============================================================
-# FINAL K-MEANS MODEL
-# ============================================================
+med_balance = profile["Avg_Balance"].median()
+med_churn = profile["Churn_Rate"].median()
+profile["Persona"] = profile.apply(lambda r: persona_name(r, med_balance, med_churn), axis=1)
 
-kmeans = KMeans(
-    n_clusters=best_k,
-    random_state=42,
-    n_init=10
-)
+# Ensure unique labels if two clusters receive same label.
+used = {}
+names = []
+for name in profile["Persona"]:
+    used[name] = used.get(name, 0) + 1
+    names.append(name if used[name] == 1 else f"{name} — Cohort {used[name]}")
+profile["Persona"] = names
 
-data["Segment"] = kmeans.fit_predict(
-    X_scaled
-)
-
-
-# ============================================================
-# CUSTOMER SEGMENT PROFILE
-# ============================================================
-
-profile = (
-    data
-    .groupby("Segment")
-    .agg(
-        Customers=("Segment", "size"),
-        Avg_Age=("Age", "mean"),
-        Avg_CreditScore=("CreditScore", "mean"),
-        Avg_Balance=("Balance", "mean"),
-        Avg_Salary=("EstimatedSalary", "mean"),
-        Avg_Products=("NumOfProducts", "mean"),
-        Active_Rate=("IsActiveMember", "mean"),
-        Churn_Rate=("Exited", "mean")
-    )
-    .reset_index()
-)
-
-
-# Convert rates to percentages
-
-profile["Active_Rate"] = (
-    profile["Active_Rate"] * 100
-)
-
-profile["Churn_Rate"] = (
-    profile["Churn_Rate"] * 100
-)
-
+persona_map = dict(zip(profile["Cluster"], profile["Persona"]))
+data["Customer Persona"] = data["Cluster"].map(persona_map)
 
 # ============================================================
-# SAVE RESULTS
+# FILTERS
 # ============================================================
+st.sidebar.markdown("## Customer Intelligence")
+st.sidebar.caption("Interactive analysis controls")
 
-try:
+geo_options = sorted(data["Geography"].dropna().unique().tolist()) if "Geography" in data.columns else []
+gender_options = sorted(data["Gender"].dropna().unique().tolist()) if "Gender" in data.columns else []
 
-    data.to_csv(
-        RESULT_FILE,
-        index=False,
-        encoding="utf-8-sig"
-    )
+selected_geo = st.sidebar.multiselect("Market", geo_options, default=geo_options)
+selected_gender = st.sidebar.multiselect("Gender", gender_options, default=gender_options)
+status = st.sidebar.radio("Customer status", ["All customers","Active only","Inactive only","Exited only"], index=0)
 
-    profile.to_csv(
-        PROFILE_FILE,
-        index=False,
-        encoding="utf-8-sig"
-    )
+age_min, age_max = int(data["Age"].min()), int(data["Age"].max())
+age_range = st.sidebar.slider("Age range", age_min, age_max, (age_min, age_max))
 
-except Exception:
-    pass
+credit_min, credit_max = int(data["CreditScore"].min()), int(data["CreditScore"].max())
+credit_range = st.sidebar.slider("Credit score", credit_min, credit_max, (credit_min, credit_max))
 
+persona_options = sorted(data["Customer Persona"].unique().tolist())
+selected_personas = st.sidebar.multiselect("Customer persona", persona_options, default=persona_options)
 
-# ============================================================
-# PCA
-# ============================================================
+filtered = data.copy()
+if geo_options:
+    filtered = filtered[filtered["Geography"].isin(selected_geo)]
+if gender_options:
+    filtered = filtered[filtered["Gender"].isin(selected_gender)]
+filtered = filtered[(filtered["Age"] >= age_range[0]) & (filtered["Age"] <= age_range[1])]
+filtered = filtered[(filtered["CreditScore"] >= credit_range[0]) & (filtered["CreditScore"] <= credit_range[1])]
+filtered = filtered[filtered["Customer Persona"].isin(selected_personas)]
 
-pca = PCA(
-    n_components=2,
-    random_state=42
-)
-
-pca_result = pca.fit_transform(
-    X_scaled
-)
-
-pca_data = pd.DataFrame({
-
-    "PC1": pca_result[:, 0],
-
-    "PC2": pca_result[:, 1],
-
-    "Segment": data["Segment"].astype(str)
-
-})
-
+if status == "Active only":
+    filtered = filtered[filtered["IsActiveMember"] == 1]
+elif status == "Inactive only":
+    filtered = filtered[filtered["IsActiveMember"] == 0]
+elif status == "Exited only":
+    filtered = filtered[filtered["Exited"] == 1]
 
 # ============================================================
-# KPI CALCULATIONS
+# KPIs
 # ============================================================
-
-total_customers = len(data)
-
-total_exited = int(
-    data["Exited"].sum()
-)
-
-total_active = int(
-    data["IsActiveMember"].sum()
-)
-
-overall_churn = (
-    data["Exited"].mean() * 100
-)
-
-overall_active = (
-    data["IsActiveMember"].mean() * 100
-)
-
-average_balance = (
-    data["Balance"].mean()
-)
-
-average_credit = (
-    data["CreditScore"].mean()
-)
-
-average_salary = (
-    data["EstimatedSalary"].mean()
-)
-
+total = len(filtered)
+exited = int(filtered["Exited"].sum()) if total else 0
+active = int(filtered["IsActiveMember"].sum()) if total else 0
+churn = filtered["Exited"].mean()*100 if total else 0
+active_rate = filtered["IsActiveMember"].mean()*100 if total else 0
+balance = filtered["Balance"].mean() if total else 0
 
 # ============================================================
-# DASHBOARD HEADER
+# HEADER
 # ============================================================
-
 st.markdown("""
-<div class="dashboard-header">
-
-<div class="dashboard-title">
-● Banking Customer Intelligence Overview
-</div>
-
-<div class="dashboard-subtitle">
-Customer Segmentation • Behavioural Analytics • Churn Insights
-</div>
-
+<div class="hero">
+  <div class="eyebrow">BANKING CUSTOMER INTELLIGENCE • ANALYTICS</div>
+  <div class="hero-title">Customer Portfolio Command Center</div>
+  <div class="hero-sub">
+    Behavioural segmentation, retention signals and portfolio health — powered by K-Means clustering.
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
+k = st.columns(5)
+cards = [
+    ("CUSTOMER BASE", f"{total:,}", "Filtered portfolio"),
+    ("RETENTION RISK", f"{churn:.1f}%", "Observed exit rate"),
+    ("ACTIVE RATE", f"{active_rate:.1f}%", "Engagement indicator"),
+    ("AVG. BALANCE", f"${balance:,.0f}", "Portfolio average"),
+    ("ACTIVE CUSTOMERS", f"{active:,}", "Currently active")
+]
+for col, (label, value, note) in zip(k, cards):
+    with col:
+        st.markdown(f'<div class="kpi"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-note">{note}</div></div>', unsafe_allow_html=True)
 
 # ============================================================
-# TOP KPI CARDS
+# TABS
 # ============================================================
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Executive Overview", "Customer Personas", "Retention Intelligence", "Model Insights"
+])
 
-c1, c2, c3, c4, c5 = st.columns(5)
-
-
-with c1:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    TOTAL CUSTOMERS
-    </div>
-
-    <div class="metric-value">
-    {total_customers:,}
-    </div>
-
-    <div class="metric-small">
-    Customer records
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with c2:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    CUSTOMER SEGMENTS
-    </div>
-
-    <div class="metric-value">
-    {best_k}
-    </div>
-
-    <div class="metric-small">
-    K-Means clusters
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with c3:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    CHURN RATE
-    </div>
-
-    <div class="metric-value">
-    {overall_churn:.1f}%
-    </div>
-
-    <div class="metric-small">
-    Observed churn
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with c4:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    ACTIVE CUSTOMERS
-    </div>
-
-    <div class="metric-value">
-    {overall_active:.1f}%
-    </div>
-
-    <div class="metric-small">
-    Active membership
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with c5:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    AVG BALANCE
-    </div>
-
-    <div class="metric-value">
-    ${average_balance:,.0f}
-    </div>
-
-    <div class="metric-small">
-    Customer average
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-
-# ============================================================
-# ROW 1
-# ============================================================
-
-col1, col2, col3 = st.columns(
-    [1.25, 1, 1]
-)
-
-
-# ============================================================
-# CUSTOMER SEGMENT DISTRIBUTION
-# ============================================================
-
-with col1:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Customer Segment Distribution'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    segment_counts = (
-        data["Segment"]
-        .value_counts()
-        .sort_index()
-        .reset_index()
-    )
-
-    segment_counts.columns = [
-        "Segment",
-        "Customers"
-    ]
-
-    fig = px.bar(
-        segment_counts,
-        x="Segment",
-        y="Customers",
-        text="Customers"
-    )
-
-    fig.update_traces(
-        textposition="outside"
-    )
-
+# Common plot theme
+def polish(fig, height=330):
     fig.update_layout(
-        height=285,
-        margin=dict(
-            l=10,
-            r=10,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        plot_bgcolor="#0d0f1c",
-        font=dict(
-            color="#d9dce8",
-            size=10
-        ),
-        xaxis=dict(
-            title="Segment",
-            gridcolor="#1c2032"
-        ),
-        yaxis=dict(
-            title="Customers",
-            gridcolor="#1c2032"
-        ),
-        showlegend=False
+        height=height, margin=dict(l=8,r=8,t=32,b=8),
+        paper_bgcolor="#0D1220", plot_bgcolor="#0D1220",
+        font=dict(color="#DCE4F2", size=11),
+        legend=dict(bgcolor="rgba(0,0,0,0)"),
+        hoverlabel=dict(bgcolor="#111827", font_color="#F4F7FB"),
+        xaxis=dict(gridcolor="#202A3D", zeroline=False),
+        yaxis=dict(gridcolor="#202A3D", zeroline=False)
     )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# CHURN GAUGE
-# ============================================================
-
-with col2:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Customer Churn Rate'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=overall_churn,
-            number={
-                "suffix": "%",
-                "font": {
-                    "size": 28
-                }
-            },
-            gauge={
-                "axis": {
-                    "range": [0, 100]
-                },
-                "bar": {
-                    "color": "#27d17f"
-                },
-                "bgcolor": "#171a29",
-                "borderwidth": 0
-            }
-        )
-    )
-
-    fig.update_layout(
-        height=285,
-        margin=dict(
-            l=20,
-            r=20,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        font={
-            "color": "#ffffff"
-        }
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# ACTIVE CUSTOMER GAUGE
-# ============================================================
-
-with col3:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Active Customer Rate'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=overall_active,
-            number={
-                "suffix": "%",
-                "font": {
-                    "size": 28
-                }
-            },
-            gauge={
-                "axis": {
-                    "range": [0, 100]
-                },
-                "bar": {
-                    "color": "#27d17f"
-                },
-                "bgcolor": "#171a29",
-                "borderwidth": 0
-            }
-        )
-    )
-
-    fig.update_layout(
-        height=285,
-        margin=dict(
-            l=20,
-            r=20,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        font={
-            "color": "#ffffff"
-        }
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# ROW 2
-# ============================================================
-
-col4, col5, col6 = st.columns(
-    [1.25, 1, 1]
-)
-
-
-# ============================================================
-# CHURN BY SEGMENT
-# ============================================================
-
-with col4:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Churn Behaviour by Segment'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    churn_data = profile[
-        [
-            "Segment",
-            "Churn_Rate"
-        ]
-    ].copy()
-
-    fig = px.bar(
-        churn_data,
-        x="Segment",
-        y="Churn_Rate",
-        text="Churn_Rate"
-    )
-
-    fig.update_traces(
-        texttemplate="%{text:.1f}%",
-        textposition="outside"
-    )
-
-    fig.update_layout(
-        height=285,
-        margin=dict(
-            l=10,
-            r=10,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        plot_bgcolor="#0d0f1c",
-        font=dict(
-            color="#d9dce8",
-            size=10
-        ),
-        xaxis=dict(
-            title="Segment",
-            gridcolor="#1c2032"
-        ),
-        yaxis=dict(
-            title="Churn Rate (%)",
-            gridcolor="#1c2032"
-        ),
-        showlegend=False
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# BALANCE BY SEGMENT
-# ============================================================
-
-with col5:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Average Balance by Segment'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    balance_data = profile[
-        [
-            "Segment",
-            "Avg_Balance"
-        ]
-    ].copy()
-
-    fig = px.bar(
-        balance_data,
-        x="Segment",
-        y="Avg_Balance"
-    )
-
-    fig.update_layout(
-        height=285,
-        margin=dict(
-            l=10,
-            r=10,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        plot_bgcolor="#0d0f1c",
-        font=dict(
-            color="#d9dce8",
-            size=10
-        ),
-        xaxis=dict(
-            title="Segment",
-            gridcolor="#1c2032"
-        ),
-        yaxis=dict(
-            title="Average Balance",
-            gridcolor="#1c2032"
-        ),
-        showlegend=False
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# RETENTION STATUS
-# ============================================================
-
-with col6:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Customer Retention Status'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    retention = pd.DataFrame({
-        "Status": [
-            "Retained",
-            "Exited"
-        ],
-        "Customers": [
-            total_customers - total_exited,
-            total_exited
-        ]
-    })
-
-    fig = px.pie(
-        retention,
-        names="Status",
-        values="Customers",
-        hole=0.60
-    )
-
-    fig.update_layout(
-        height=285,
-        margin=dict(
-            l=10,
-            r=10,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        font=dict(
-            color="#d9dce8",
-            size=10
-        ),
-        legend=dict(
-            orientation="h",
-            y=-0.05
-        )
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# ROW 3
-# ============================================================
-
-col7, col8 = st.columns(
-    [1.65, 1]
-)
-
-
-# ============================================================
-# CUSTOMER SEGMENT PROFILE TABLE
-# ============================================================
-
-with col7:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Customer Segment Profile'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    table = profile.copy()
-
-    table = table.rename(
-        columns={
-            "Segment": "Segment",
-            "Customers": "Customers",
-            "Avg_Age": "Avg Age",
-            "Avg_CreditScore": "Avg Credit",
-            "Avg_Balance": "Avg Balance",
-            "Avg_Salary": "Avg Salary",
-            "Avg_Products": "Products",
-            "Active_Rate": "Active %",
-            "Churn_Rate": "Churn %"
-        }
-    )
-
-    table["Avg Age"] = (
-        table["Avg Age"].round(1)
-    )
-
-    table["Avg Credit"] = (
-        table["Avg Credit"].round(0)
-    )
-
-    table["Avg Balance"] = (
-        table["Avg Balance"].round(0)
-    )
-
-    table["Avg Salary"] = (
-        table["Avg Salary"].round(0)
-    )
-
-    table["Products"] = (
-        table["Products"].round(2)
-    )
-
-    table["Active %"] = (
-        table["Active %"].round(1)
-    )
-
-    table["Churn %"] = (
-        table["Churn %"].round(1)
-    )
-
-    st.dataframe(
-        table,
-        use_container_width=True,
-        hide_index=True,
-        height=285
-    )
-
-
-# ============================================================
-# SILHOUETTE ANALYSIS
-# ============================================================
-
-with col8:
-
-    st.markdown(
-        '<div class="section-title">'
-        '● Clustering Evaluation'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    silhouette_df = pd.DataFrame({
-        "Clusters": list(
-            silhouette_scores.keys()
-        ),
-        "Silhouette Score": list(
-            silhouette_scores.values()
-        )
-    })
-
-    fig = px.line(
-        silhouette_df,
-        x="Clusters",
-        y="Silhouette Score",
-        markers=True
-    )
-
-    fig.update_layout(
-        height=285,
-        margin=dict(
-            l=10,
-            r=10,
-            t=20,
-            b=10
-        ),
-        paper_bgcolor="#0d0f1c",
-        plot_bgcolor="#0d0f1c",
-        font=dict(
-            color="#d9dce8",
-            size=10
-        ),
-        xaxis=dict(
-            title="Clusters",
-            gridcolor="#1c2032"
-        ),
-        yaxis=dict(
-            title="Silhouette Score",
-            gridcolor="#1c2032"
-        ),
-        showlegend=False
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        }
-    )
-
-
-# ============================================================
-# PCA SECTION
-# ============================================================
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-st.markdown(
-    '<div class="section-title">'
-    '● Customer Segment Behaviour — PCA Visualization'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-fig = px.scatter(
-    pca_data,
-    x="PC1",
-    y="PC2",
-    color="Segment",
-    hover_data=["Segment"],
-    opacity=0.65
-)
-
-fig.update_layout(
-    height=420,
-    margin=dict(
-        l=10,
-        r=10,
-        t=20,
-        b=10
-    ),
-    paper_bgcolor="#0d0f1c",
-    plot_bgcolor="#0d0f1c",
-    font=dict(
-        color="#d9dce8",
-        size=10
-    ),
-    xaxis=dict(
-        title="Principal Component 1",
-        gridcolor="#1c2032"
-    ),
-    yaxis=dict(
-        title="Principal Component 2",
-        gridcolor="#1c2032"
-    )
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True,
-    config={
-        "displayModeBar": False
-    }
-)
-
-
-# ============================================================
-# BOTTOM KPI ROW
-# ============================================================
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-b1, b2, b3, b4 = st.columns(4)
-
-
-with b1:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    AVG CREDIT SCORE
-    </div>
-
-    <div class="metric-value">
-    {average_credit:.0f}
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with b2:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    AVG SALARY
-    </div>
-
-    <div class="metric-value">
-    ${average_salary:,.0f}
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with b3:
-
-    st.markdown(f"""
-    <div class="metric-card">
-
-    <div class="metric-title">
-    EXITED CUSTOMERS
-    </div>
-
-    <div class="metric-value">
-    {total_exited:,}
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with b4:
-
+    return fig
+
+with tab1:
+    st.markdown('<div class="section">PORTFOLIO HEALTH</div>', unsafe_allow_html=True)
+    a,b,c = st.columns(3)
+
+    with a:
+        counts = filtered["Customer Persona"].value_counts().reset_index()
+        counts.columns = ["Persona","Customers"]
+        fig = px.bar(counts, x="Customers", y="Persona", orientation="h",
+                     title="Portfolio composition", text="Customers")
+        fig.update_traces(textposition="outside")
+        st.plotly_chart(polish(fig, 360), use_container_width=True, config={"displayModeBar":False})
+
+    with b:
+        if total:
+            ret = pd.DataFrame({
+                "Status":["Retained","Exited"],
+                "Customers":[total-exited, exited]
+            })
+            fig = px.pie(ret, names="Status", values="Customers", hole=.68,
+                         title="Retention health")
+            fig.update_traces(textinfo="percent", hovertemplate="%{label}: %{value:,}<extra></extra>")
+            st.plotly_chart(polish(fig, 360), use_container_width=True, config={"displayModeBar":False})
+
+    with c:
+        by_geo = filtered.groupby("Geography").agg(
+            Customers=("CustomerId","size"),
+            Churn=("Exited","mean")
+        ).reset_index()
+        by_geo["Churn"] *= 100
+        fig = px.bar(by_geo, x="Geography", y="Churn", text="Churn",
+                     title="Retention risk by market")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        st.plotly_chart(polish(fig, 360), use_container_width=True, config={"displayModeBar":False})
+
+    st.markdown('<div class="section">BEHAVIOURAL SIGNALS</div>', unsafe_allow_html=True)
+    x1,x2 = st.columns(2)
+    with x1:
+        fig = px.scatter(filtered, x="Age", y="Balance", size="EstimatedSalary",
+                         color="Exited" if total else None,
+                         hover_data=["CreditScore","NumOfProducts","IsActiveMember","Customer Persona"],
+                         title="Customer value landscape", opacity=.72)
+        st.plotly_chart(polish(fig, 390), use_container_width=True, config={"displayModeBar":False})
+    with x2:
+        age_bins = pd.cut(filtered["Age"], bins=[17,25,35,45,55,100],
+                          labels=["18–25","26–35","36–45","46–55","56+"])
+        age_churn = filtered.assign(AgeBand=age_bins).groupby("AgeBand", observed=False)["Exited"].mean().reset_index()
+        age_churn["Exited"] *= 100
+        fig = px.line(age_churn, x="AgeBand", y="Exited", markers=True,
+                      title="Churn trend across age bands")
+        fig.update_traces(line_width=3)
+        st.plotly_chart(polish(fig, 390), use_container_width=True, config={"displayModeBar":False})
+
+with tab2:
+    st.markdown('<div class="section">CUSTOMER PERSONA INTELLIGENCE</div>', unsafe_allow_html=True)
+    persona_profile = filtered.groupby("Customer Persona").agg(
+        Customers=("CustomerId","size"),
+        Avg_Age=("Age","mean"),
+        Avg_Credit=("CreditScore","mean"),
+        Avg_Balance=("Balance","mean"),
+        Active_Rate=("IsActiveMember","mean"),
+        Churn_Rate=("Exited","mean")
+    ).reset_index()
+    persona_profile["Active_Rate"] *= 100
+    persona_profile["Churn_Rate"] *= 100
+
+    p1,p2 = st.columns([1.1,1])
+    with p1:
+        fig = px.bar(persona_profile.sort_values("Churn_Rate"), x="Churn_Rate",
+                     y="Customer Persona", orientation="h", text="Churn_Rate",
+                     title="Retention exposure by persona")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        st.plotly_chart(polish(fig, 410), use_container_width=True, config={"displayModeBar":False})
+    with p2:
+        fig = px.scatter(persona_profile, x="Avg_Balance", y="Churn_Rate",
+                         size="Customers", hover_name="Customer Persona",
+                         title="Value vs. retention exposure")
+        st.plotly_chart(polish(fig, 410), use_container_width=True, config={"displayModeBar":False})
+
+    table = persona_profile.rename(columns={
+        "Customer Persona":"Persona","Customers":"Customers","Avg_Age":"Avg Age",
+        "Avg_Credit":"Avg Credit","Avg_Balance":"Avg Balance",
+        "Active_Rate":"Active %","Churn_Rate":"Churn %"
+    }).copy()
+    for c in ["Avg Age","Avg Credit","Avg Balance","Active %","Churn %"]:
+        table[c] = table[c].round(1)
+    st.dataframe(table, use_container_width=True, hide_index=True, height=330)
+
+with tab3:
+    st.markdown('<div class="section">RETENTION INTELLIGENCE</div>', unsafe_allow_html=True)
+    r1,r2,r3 = st.columns(3)
+
+    with r1:
+        risk_count = int((filtered["Exited"]==1).sum())
+        st.markdown(f'<div class="insight"><div class="insight-title">Observed exits</div><div class="insight-value">{risk_count:,}</div><div class="insight-copy">Customers marked as exited in the selected portfolio.</div></div>', unsafe_allow_html=True)
+    with r2:
+        high_risk = persona_profile.loc[persona_profile["Churn_Rate"].idxmax(),"Customer Persona"] if len(persona_profile) else "—"
+        st.markdown(f'<div class="insight"><div class="insight-title">Highest exposure persona</div><div class="insight-value">{high_risk}</div><div class="insight-copy">Highest observed churn rate among the filtered personas.</div></div>', unsafe_allow_html=True)
+    with r3:
+        inactive = int((filtered["IsActiveMember"]==0).sum())
+        st.markdown(f'<div class="insight"><div class="insight-title">Inactive customers</div><div class="insight-value">{inactive:,}</div><div class="insight-copy">Potential re-engagement population in the selected view.</div></div>', unsafe_allow_html=True)
+
+    c1,c2 = st.columns(2)
+    with c1:
+        prod = filtered.groupby("NumOfProducts")["Exited"].mean().reset_index()
+        prod["Exited"] *= 100
+        prod["NumOfProducts"] = prod["NumOfProducts"].astype(str)
+        fig = px.bar(prod, x="NumOfProducts", y="Exited", text="Exited",
+                     title="Churn by product relationship")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        st.plotly_chart(polish(fig, 350), use_container_width=True, config={"displayModeBar":False})
+    with c2:
+        tenure = filtered.groupby("Tenure")["Exited"].mean().reset_index()
+        tenure["Exited"] *= 100
+        fig = px.line(tenure, x="Tenure", y="Exited", markers=True,
+                      title="Churn pattern across tenure")
+        st.plotly_chart(polish(fig, 350), use_container_width=True, config={"displayModeBar":False})
+
+with tab4:
+    st.markdown('<div class="section">MODEL PERFORMANCE & CUSTOMER SPACE</div>', unsafe_allow_html=True)
+    m1,m2,m3 = st.columns(3)
     best_score = silhouette_scores[best_k]
+    m1.metric("Optimal cluster count", best_k)
+    m2.metric("Silhouette score", f"{best_score:.3f}")
+    m3.metric("Features used", len(features))
 
-    st.markdown(f"""
-    <div class="metric-card">
+    left,right = st.columns([1,1.35])
+    with left:
+        sdf = pd.DataFrame({"Clusters":list(silhouette_scores.keys()),
+                            "Silhouette Score":list(silhouette_scores.values())})
+        fig = px.line(sdf, x="Clusters", y="Silhouette Score", markers=True,
+                      title="Clustering validation")
+        st.plotly_chart(polish(fig, 380), use_container_width=True, config={"displayModeBar":False})
 
-    <div class="metric-title">
-    BEST SILHOUETTE SCORE
-    </div>
-
-    <div class="metric-value">
-    {best_score:.3f}
-    </div>
-
-    <div class="metric-small">
-    {best_k} clusters selected
-    </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
+    with right:
+        pca = PCA(n_components=2, random_state=42)
+        coords = pca.fit_transform(X_scaled)
+        pca_df = pd.DataFrame({
+            "PC1":coords[:,0], "PC2":coords[:,1],
+            "Persona":data["Customer Persona"].values,
+            "Exited":data["Exited"].map({0:"Retained",1:"Exited"}).values
+        })
+        # Sample for browser performance while retaining full model.
+        plot_df = pca_df.sample(min(3000,len(pca_df)), random_state=42)
+        fig = px.scatter(plot_df, x="PC1", y="PC2", color="Persona",
+                         symbol="Exited", hover_data=["Persona","Exited"],
+                         title="Customer behavioural space")
+        st.plotly_chart(polish(fig, 380), use_container_width=True, config={"displayModeBar":False})
 
 # ============================================================
-# FOOTER
+# CUSTOMER EXPLORER
 # ============================================================
+st.markdown('<div class="section">CUSTOMER EXPLORER</div>', unsafe_allow_html=True)
+show_cols = [c for c in [
+    "CustomerId","Surname","Geography","Gender","Age","CreditScore",
+    "Balance","NumOfProducts","IsActiveMember","EstimatedSalary",
+    "Customer Persona","Exited"
+] if c in filtered.columns]
+explorer = filtered[show_cols].copy()
+explorer = explorer.rename(columns={
+    "CustomerId":"Customer ID","CreditScore":"Credit Score",
+    "NumOfProducts":"Products","IsActiveMember":"Active",
+    "EstimatedSalary":"Est. Salary","Customer Persona":"Persona",
+    "Exited":"Exited"
+})
+st.dataframe(explorer, use_container_width=True, hide_index=True, height=340)
 
-st.markdown("""
-<div style="
-    text-align:center;
-    color:#656a7e;
-    font-size:10px;
-    padding:15px;
-">
-
-Banking Customer Segmentation & Behavioural Analytics
-&nbsp; • &nbsp;
-K-Means Clustering
-&nbsp; • &nbsp;
-Machine Learning
-
-</div>
-""", unsafe_allow_html=True)
+st.caption(
+    f"Banking Customer Intelligence • {len(data):,} records • "
+    f"K-Means + PCA + Silhouette Validation • Interactive portfolio analysis"
+)
